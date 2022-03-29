@@ -345,7 +345,5 @@ func (g *generator) getFullRelationShips() (toColumnNameToRelationships map[stri
 		}
 	}
 
-	println(toColumnNameToRelationships)
-	println(fromColumnNameToRelationships)
 	return
 }
