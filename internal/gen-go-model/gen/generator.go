@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/dave/jennifer/jen"
+
 	"github.com/thanhpd56/dbml-go/core"
 	"github.com/thanhpd56/dbml-go/internal/gen-go-model/genutil"
 )
@@ -98,9 +99,67 @@ func (g *generator) genTable(table core.Table) error {
 	var genColumnErr error
 
 	cols := make([]string, 0)
+	toColumnNameToRelationships := map[string][]core.Relationship{}
+	fromColumnNameToRelationships := map[string][]core.Relationship{}
+	for _, ref := range g.dbml.Refs {
+		for _, relationship := range ref.Relationships {
+			toColumnNameToRelationships[relationship.To] = append(toColumnNameToRelationships[relationship.To], relationship)
+			fromColumnNameToRelationships[relationship.From] = append(fromColumnNameToRelationships[relationship.From], relationship)
+		}
+	}
 
 	f.Type().Id(tableGoTypeName).StructFunc(func(group *jen.Group) {
 		for _, column := range table.Columns {
+			// users.department_id > departments.id
+			fullColumnID := fmt.Sprintf("%s.%s", table.Name, column.Name)
+			// [{from: }]
+			toRelationships := toColumnNameToRelationships[fullColumnID]
+			// support inline relationship
+			if column.Settings.Ref.To != "" {
+				toRelationships = append(toRelationships, core.Relationship{
+					From: fullColumnID,
+					To:   column.Settings.Ref.To,
+					Type: column.Settings.Ref.Type,
+				})
+			}
+
+			for _, relationship := range toRelationships {
+				// split department_id => to get department
+				relationName := strings.Split(column.Name, "_id")[0]
+				// split departments.id => departments
+				typeName := strings.Split(relationship.From, ".")[0]
+				// normalize to Department
+				goTypeName := genutil.NormalizeGoTypeName(typeName)
+				// normalize relationName department to Department
+				fieldName := genutil.NormalizeGoTypeName(relationName)
+				if relationship.Type == core.OneToMany {
+					group.Id(fieldName).Id(goTypeName)
+				} else if relationship.Type == core.OneToOne {
+					group.Id(fieldName).Op("*").Id(goTypeName)
+				}
+			}
+
+			// departments.id > users.department_id
+			fromRelationships := fromColumnNameToRelationships[fullColumnID]
+			for _, relationship := range fromRelationships {
+				// users.id => users
+				typeName := strings.Split(relationship.To, ".")[0]
+				// users => User
+				goTypeName := genutil.NormalizeGoTypeName(typeName)
+				if relationship.Type == core.OneToMany {
+					// Users
+					name := genutil.GoInitialismCamelCase(typeName)
+					// Users []User
+					group.Id(name).Index().Id(goTypeName)
+
+				} else if relationship.Type == core.OneToOne {
+					// User
+					name := genutil.NormalizeGoTypeName(typeName)
+					// User *User
+					group.Id(name).Op("*").Id(goTypeName)
+				}
+			}
+
 			columnName := genutil.NormalLizeGoName(column.Name)
 			columnOriginName := genutil.Normalize(column.Name)
 			t, ok := g.getJenType(column.Type)
