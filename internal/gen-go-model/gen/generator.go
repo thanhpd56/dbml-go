@@ -247,10 +247,15 @@ func (g *generator) genTable(table core.Table, toColumnNameToRelationships map[s
 
 				fromGoTypeName := genutil.NormalizeGoTypeName(fromTypeName)
 				if relationship.Type == core.OneToMany {
-					prefix := leftOf(toColumnName, singularFromTypeName+"_id")
-					if prefix == "" {
-						prefix = leftOf(toColumnName, "id")
+					prefix := ""
+					singleFromColumnID := singularFromTypeName + "_id"
+					if singleFromColumnID != toColumnName {
+						prefix = leftOf(toColumnName, singleFromColumnID)
+						if prefix == "" {
+							prefix = leftOf(toColumnName, "id")
+						}
 					}
+
 					// Users
 					name := genutil.GoInitialismCamelCase(prefix + toTypeName)
 					// Users []User
